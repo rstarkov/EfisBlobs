@@ -133,16 +133,20 @@ public class ScreenPainter : IDrawable
 
     public ScreenPainter()
     {
+        var minDist = 3f * MathF.PI / 180f; // minimum angular distance between the edges of blobs
         _blobs = new Blob[200];
         for (int i = 0; i < _blobs.Length; i++)
         {
+        again:;
             _blobs[i] = Blob.CreateRandom();
             if (i >= 150)
             {
                 // _blobs[i].Trace = new();
-                _blobs[i].AngularSize = 0.5f / 180f * MathF.PI;
+                _blobs[i].AngularRadius = 0.5f / 180f * MathF.PI;
                 _blobs[i].Color = Colors.White;
             }
+            if (_blobs[0..i].Any(b => Math.Asin(Vector3.Cross(b.Location, _blobs[i].Location).Length()) < b.AngularRadius + _blobs[i].AngularRadius + minDist))
+                goto again;
         }
     }
 
@@ -180,7 +184,7 @@ public class ScreenPainter : IDrawable
                 continue;
             var cx = Width / 2 + vec.X / FOV * wh;
             var cy = Height / 2 - vec.Y / FOV * wh;
-            var cr = b.AngularSize / FOV * wh;
+            var cr = b.AngularRadius / FOV * wh;
             if (cx + cr > 0 && cy + cr > 0 && cx - cr < Width && cy - cr < Height)
             {
                 canvas.FillColor = b.Color;
@@ -293,14 +297,14 @@ public class ScreenPainter : IDrawable
 public class Blob
 {
     public Vector3 Location;
-    public float AngularSize; // radians
+    public float AngularRadius; // radians
     public Color Color;
     public Queue<(DateTime t, PointF pos)> Trace = null;
 
     public static Blob CreateRandom()
     {
         var b = new Blob();
-        b.AngularSize = Random.Shared.NextSingle(2.5f, 5f) / 180f * MathF.PI;
+        b.AngularRadius = Random.Shared.NextSingle(2.5f, 5f) / 180f * MathF.PI;
         b.Color = Random.Shared.NextSingle() < 0.333f ? Colors.Red : Random.Shared.NextSingle() < 0.5f ? Colors.Lime : Colors.Yellow;
         var u = Random.Shared.NextSingle();
         var v = Random.Shared.NextSingle();
