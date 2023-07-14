@@ -44,8 +44,15 @@ public partial class MainPage : ContentPage
             };
             Compass.Default.Start(SensorSpeed.Fastest);
         }
-        //if (Magnetometer.Default.IsSupported)
-        //Microsoft.Maui.Devices.Sensors.Location
+        if (Magnetometer.Default.IsSupported)
+        {
+            Magnetometer.Default.ReadingChanged += (_, args) =>
+            {
+                _painter.Magnetometer(args.Reading);
+                gfx.Invalidate();
+            };
+            Magnetometer.Default.Start(SensorSpeed.Fastest);
+        }
 
         if (false)
         {
@@ -105,8 +112,9 @@ public class ScreenPainter : IDrawable
 
     private Quaternion _orientation = Quaternion.Identity;
     private Blob[] _blobs;
-    private FpsCounter _fpsDraw = new(), _fpsGyroscope = new(), _fpsBarometer = new(), _fpsCompass = new(), _fpsGps = new();
+    private FpsCounter _fpsDraw = new(), _fpsGyroscope = new(), _fpsBarometer = new(), _fpsCompass = new(), _fpsGps = new(), _fpsMag = new();
     private History _baroAltitude = new(), _compassHdg = new(), _gpsAltitude = new(), _gpsSpeed = new();
+    private Vector3 _magnetic;
 
     public ScreenPainter()
     {
@@ -129,7 +137,7 @@ public class ScreenPainter : IDrawable
             return;
         _fpsDraw.CountFrame();
         canvas.FontColor = Colors.Gray;
-        canvas.DrawString($"draw: {_fpsDraw.AvgFps:0.0}   gyro: {_fpsGyroscope.AvgFps:0.0}   baro: {_fpsBarometer.AvgFps:0.0}   compass: {_fpsCompass.AvgFps:0.0}   gps: {_fpsGps.AvgFps:0.0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Left, VerticalAlignment.Bottom);
+        canvas.DrawString($"draw: {_fpsDraw.AvgFps:0.0}   gyro: {_fpsGyroscope.AvgFps:0.0}   baro: {_fpsBarometer.AvgFps:0.0}   compass: {_fpsCompass.AvgFps:0.0}   mag: {_fpsMag.AvgFps:0.0}   gps: {_fpsGps.AvgFps:0.0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Left, VerticalAlignment.Bottom);
 
         var wh = Math.Max(Width, Height);
 
@@ -194,6 +202,21 @@ public class ScreenPainter : IDrawable
             canvas.FillRectangle(Width - 70, Height / 2 - 15, 70, 30);
             canvas.DrawString($"{gpsalt:#,0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Right, VerticalAlignment.Center);
         }
+
+        if (_magnetic != default)
+        {
+            var mv = Vector3.Transform(_magnetic, Quaternion.Inverse(_orientation));
+            var mvu = mv / mv.Length();
+            canvas.FillColor = Colors.Black;
+            canvas.FillCircle(40, 40, 38);
+            canvas.StrokeColor = Colors.Gray;
+            canvas.DrawCircle(40, 40, 35);
+            var mvu2 = new Vector2(mvu.X, -mvu.Y);
+            canvas.DrawLine(40, 40, 40 + mvu2.X / mvu2.Length() * 33, 40 + mvu2.Y / mvu2.Length() * 33);
+            canvas.StrokeSize = 2f;
+            canvas.StrokeColor = Colors.Yellow;
+            canvas.DrawLine(40, 40, 40 + mvu2.X * 33, 40 + mvu2.Y * 33);
+        }
     }
 
     public void Gyroscope(GyroscopeData d)
@@ -223,6 +246,12 @@ public class ScreenPainter : IDrawable
     {
         _fpsCompass.CountFrame();
         _compassHdg.AddValue(_compassFilter.Step(d.HeadingMagneticNorth));
+    }
+
+    public void Magnetometer(MagnetometerData d)
+    {
+        _fpsMag.CountFrame();
+        _magnetic = d.MagneticField;
     }
 
     public void Geolocation(Location d)
