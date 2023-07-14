@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using RT.Util.ExtensionMethods;
 
 namespace EfisBlobs;
@@ -46,6 +46,21 @@ public partial class MainPage : ContentPage
         }
         //if (Magnetometer.Default.IsSupported)
         //Microsoft.Maui.Devices.Sensors.Location
+
+        if (false)
+        {
+            var geotimer = Dispatcher.CreateTimer();
+            geotimer.Interval = TimeSpan.FromSeconds(0.1);
+            geotimer.Tick += async (s, e) =>
+            {
+                var loc = await Geolocation.Default.GetLocationAsync(new() { RequestFullAccuracy = true, DesiredAccuracy = GeolocationAccuracy.Best, Timeout = TimeSpan.FromSeconds(10) });
+                if (loc == null)
+                    return;
+                _painter.Geolocation(loc);
+                gfx.Invalidate();
+            };
+            geotimer.Start();
+        }
     }
 
     private void ContentPage_SizeChanged(object sender, EventArgs e)
@@ -66,14 +81,22 @@ public class ScreenPainter : IDrawable
 
     private Quaternion _orientation = Quaternion.Identity;
     private Blob[] _blobs;
-    private FpsCounter _fpsDraw = new(), _fpsGyroscope = new(), _fpsBarometer = new(), _fpsCompass = new();
-    private History _baroAltitude = new(), _compassHdg = new();
+    private FpsCounter _fpsDraw = new(), _fpsGyroscope = new(), _fpsBarometer = new(), _fpsCompass = new(), _fpsGps = new();
+    private History _baroAltitude = new(), _compassHdg = new(), _gpsAltitude = new(), _gpsSpeed = new();
 
     public ScreenPainter()
     {
         _blobs = new Blob[200];
         for (int i = 0; i < _blobs.Length; i++)
+        {
             _blobs[i] = Blob.CreateRandom();
+            if (i >= 150)
+            {
+                // _blobs[i].Trace = new();
+                _blobs[i].AngularSize = 0.5f / 180f * MathF.PI;
+                _blobs[i].Color = Colors.White;
+            }
+        }
     }
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
@@ -82,9 +105,27 @@ public class ScreenPainter : IDrawable
             return;
         _fpsDraw.CountFrame();
         canvas.FontColor = Colors.Gray;
-        canvas.DrawString($"draw: {_fpsDraw.AvgFps:0.0}   gyro: {_fpsGyroscope.AvgFps:0.0}   baro: {_fpsBarometer.AvgFps:0.0}   compass: {_fpsCompass.AvgFps:0.0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Left, VerticalAlignment.Bottom);
+        canvas.DrawString($"draw: {_fpsDraw.AvgFps:0.0}   gyro: {_fpsGyroscope.AvgFps:0.0}   baro: {_fpsBarometer.AvgFps:0.0}   compass: {_fpsCompass.AvgFps:0.0}   gps: {_fpsGps.AvgFps:0.0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Left, VerticalAlignment.Bottom);
 
         var wh = Math.Max(Width, Height);
+
+        foreach (var b in _blobs.Where(b => b.Trace != null))
+        {
+            const int seconds = 1;
+            while (b.Trace.Count > 0 && b.Trace.Peek().t < DateTime.UtcNow.AddSeconds(-seconds))
+                b.Trace.Dequeue();
+            PointF prev = default;
+            foreach (var pt in b.Trace)
+            {
+                if (prev != default)
+                {
+                    canvas.StrokeColor = new Color(1f - (float)(DateTime.UtcNow - pt.t).TotalSeconds / seconds);
+                    canvas.DrawLine(prev, pt.pos);
+                }
+                prev = pt.pos;
+            }
+        }
+
         foreach (var b in _blobs)
         {
             var vec = Vector3.Transform(b.Location, Quaternion.Inverse(_orientation));
@@ -98,6 +139,8 @@ public class ScreenPainter : IDrawable
                 canvas.FillColor = b.Color;
                 canvas.FillCircle(cx, cy, cr);
             }
+            if (b.Trace != null)
+                b.Trace.Enqueue((DateTime.UtcNow, new PointF(cx, cy)));
         }
 
         var hdg = _compassHdg.Last();
@@ -116,6 +159,16 @@ public class ScreenPainter : IDrawable
             canvas.FillColor = Colors.DarkBlue;
             canvas.FillRectangle(0, Height / 2 - 15, 70, 30);
             canvas.DrawString($"{baroalt:#,0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Left, VerticalAlignment.Center);
+        }
+
+        var gpsalt = _gpsAltitude.Last();
+        if (gpsalt != null)
+        {
+            canvas.FontColor = Colors.White;
+            canvas.FontSize = 20;
+            canvas.FillColor = Colors.DarkBlue;
+            canvas.FillRectangle(Width - 70, Height / 2 - 15, 70, 30);
+            canvas.DrawString($"{gpsalt:#,0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Right, VerticalAlignment.Center);
         }
     }
 
@@ -147,6 +200,16 @@ public class ScreenPainter : IDrawable
         _fpsCompass.CountFrame();
         _compassHdg.AddValue(_compassFilter.Step(d.HeadingMagneticNorth));
     }
+
+    public void Geolocation(Location d)
+    {
+        if (d.Accuracy != null && d.Accuracy > 50)
+            return;
+        _fpsGps.CountFrame();
+        if (d.Altitude != null)
+            _gpsAltitude.AddValue(d.Altitude.Value * 3.2808399);
+        //_gpsSpeed.AddValue(0);
+    }
 }
 
 
@@ -156,11 +219,12 @@ public class Blob
     public Vector3 Location;
     public float AngularSize; // radians
     public Color Color;
+    public Queue<(DateTime t, PointF pos)> Trace = null;
 
     public static Blob CreateRandom()
     {
         var b = new Blob();
-        b.AngularSize = Random.Shared.NextSingle(1.5f, 3f) / 180f * MathF.PI;
+        b.AngularSize = Random.Shared.NextSingle(2.5f, 5f) / 180f * MathF.PI;
         b.Color = Random.Shared.NextSingle() < 0.333f ? Colors.Red : Random.Shared.NextSingle() < 0.5f ? Colors.Lime : Colors.Yellow;
         var u = Random.Shared.NextSingle();
         var v = Random.Shared.NextSingle();
