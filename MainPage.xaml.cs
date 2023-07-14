@@ -53,13 +53,37 @@ public partial class MainPage : ContentPage
             geotimer.Interval = TimeSpan.FromSeconds(0.1);
             geotimer.Tick += async (s, e) =>
             {
+                geotimer.Stop();
                 var loc = await Geolocation.Default.GetLocationAsync(new() { RequestFullAccuracy = true, DesiredAccuracy = GeolocationAccuracy.Best, Timeout = TimeSpan.FromSeconds(10) });
+                geotimer.Start();
                 if (loc == null)
                     return;
                 _painter.Geolocation(loc);
                 gfx.Invalidate();
             };
             geotimer.Start();
+        }
+        if (false)
+        {
+            new Thread(() =>
+            {
+                while (true)
+                {
+                    try
+                    {
+                        var loc = Geolocation.Default.GetLocationAsync(new() { RequestFullAccuracy = true, DesiredAccuracy = GeolocationAccuracy.Best, Timeout = TimeSpan.FromSeconds(10) }).GetAwaiter().GetResult();
+                        if (loc == null)
+                            continue;
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            _painter.Geolocation(loc);
+                            gfx.Invalidate();
+                        });
+                    }
+                    catch { }
+                }
+            })
+            { IsBackground = true }.Start();
         }
     }
 
@@ -158,10 +182,10 @@ public class ScreenPainter : IDrawable
             canvas.FontSize = 20;
             canvas.FillColor = Colors.DarkBlue;
             canvas.FillRectangle(0, Height / 2 - 15, 70, 30);
-            canvas.DrawString($"{baroalt:#,0}", new Rect(0, 0, Width, Height), HorizontalAlignment.Left, VerticalAlignment.Center);
+            canvas.DrawString($"{baroalt:#,0} ft", new Rect(0, 0, Width, Height), HorizontalAlignment.Left, VerticalAlignment.Center);
         }
 
-        var gpsalt = _gpsAltitude.Last();
+        var gpsalt = _gpsAltitude.Last(2);
         if (gpsalt != null)
         {
             canvas.FontColor = Colors.White;
@@ -269,11 +293,11 @@ public class History
             _history.Dequeue();
     }
 
-    public double? Last()
+    public double? Last(double secondsAgeLimit = 1)
     {
         if (_history.Count == 0) return null;
         var last = _history.Last();
-        if (last.t < DateTime.UtcNow.AddSeconds(-1))
+        if (last.t < DateTime.UtcNow.AddSeconds(-secondsAgeLimit))
             return null;
         return last.val;
     }
