@@ -133,10 +133,11 @@ public class ScreenPainter : IDrawable
 
     public ScreenPainter()
     {
-        var minDist = 3f * MathF.PI / 180f; // minimum angular distance between the edges of blobs
+        var minDist = 10f * MathF.PI / 180f; // minimum angular distance between the edges of blobs
         _blobs = new Blob[200];
         for (int i = 0; i < _blobs.Length; i++)
         {
+            int retries = 0;
         again:;
             _blobs[i] = Blob.CreateRandom();
             if (i >= 150)
@@ -146,7 +147,15 @@ public class ScreenPainter : IDrawable
                 _blobs[i].Color = Colors.White;
             }
             if (_blobs[0..i].Any(b => Math.Asin(Vector3.Cross(b.Location, _blobs[i].Location).Length()) < b.AngularRadius + _blobs[i].AngularRadius + minDist))
+            {
+                retries++;
+                if (retries > 500)
+                {
+                    minDist *= 0.9f;
+                    retries = 0;
+                }
                 goto again;
+            }
         }
     }
 
