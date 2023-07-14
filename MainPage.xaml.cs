@@ -180,7 +180,7 @@ public class ScreenPainter : IDrawable
         {
             canvas.FontColor = Colors.Yellow;
             canvas.FontSize = 14;
-            canvas.DrawString($"{hdg:0}°", new Rect(0, 0, Width, 20), HorizontalAlignment.Center, VerticalAlignment.Top);
+            canvas.DrawString($"{hdg % 360:0}°", new Rect(0, 0, Width, 20), HorizontalAlignment.Center, VerticalAlignment.Top);
         }
 
         var baroalt = _baroAltitude.Last();
@@ -245,7 +245,15 @@ public class ScreenPainter : IDrawable
     public void Compass(CompassData d)
     {
         _fpsCompass.CountFrame();
-        _compassHdg.AddValue(_compassFilter.Step(d.HeadingMagneticNorth));
+        var hdg = d.HeadingMagneticNorth;
+        // 359-0 wraparound doesn't play well with filtering - undo wraparound
+        var last = _compassHdg.Last();
+        if (last != null)
+        {
+            while (hdg - last.Value > 180) hdg -= 360;
+            while (hdg - last.Value < -180) hdg += 360;
+        }
+        _compassHdg.AddValue(_compassFilter.Step(hdg));
     }
 
     public void Magnetometer(MagnetometerData d)
