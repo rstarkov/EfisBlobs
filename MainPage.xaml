@@ -5,6 +5,6 @@
              NavigationPage.HasNavigationBar="False" Shell.NavBarIsVisible="False"
              SizeChanged="ContentPage_SizeChanged">
 
-    <GraphicsView x:Name="gfx"/>
+    <GraphicsView x:Name="gfx" StartInteraction="gfx_StartInteraction"/>
 
 </ContentPage>

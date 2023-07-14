@@ -100,6 +100,20 @@ public partial class MainPage : ContentPage
         _painter.Height = (float)gfx.Height;
         gfx.Invalidate();
     }
+
+    private async void gfx_StartInteraction(object sender, TouchEventArgs e)
+    {
+        if (e.Touches.Any(t => t.X <= 70 && t.Y >= gfx.Height / 2 - 30 && t.Y <= gfx.Height / 2 + 30))
+        {
+            var str = await DisplayPromptAsync("Pressure setting", "Enter QNH or QFE in millibars (hPa):", initialValue: _painter.QNH.ToString());
+            if (str == null)
+                return;
+            if (int.TryParse(str, out var qnh) && qnh > 800 && qnh < 1500)
+                _painter.QNH = qnh;
+            else
+                await DisplayAlert("Pressure setting", "Please enter an integer between 800 and 1500.", "OK");
+        }
+    }
 }
 
 
@@ -115,6 +129,7 @@ public class ScreenPainter : IDrawable
     private FpsCounter _fpsDraw = new(), _fpsGyroscope = new(), _fpsBarometer = new(), _fpsCompass = new(), _fpsGps = new(), _fpsMag = new();
     private History _baroAltitude = new(), _compassHdg = new(), _gpsAltitude = new(), _gpsSpeed = new();
     private Vector3 _magnetic;
+    public int QNH = 1013;
 
     public ScreenPainter()
     {
@@ -234,7 +249,7 @@ public class ScreenPainter : IDrawable
     {
         _fpsBarometer.CountFrame();
         var T0 = 288.15;
-        var p0 = 101325;
+        var p0 = QNH * 100;
         var p = d.PressureInHectopascals * 100;
         var alt = 504.7446 * T0 * (1 - Math.Exp((Math.Log(p) - Math.Log(p0)) / 5.2561)); // feet
         _baroAltitude.AddValue(alt);
